@@ -6,18 +6,25 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use device_query::{DeviceEvents, DeviceState};
+use device_query::{CallbackGuard, DeviceEvents, DeviceState, MousePosition};
+
+lazy_static! {
+    static ref DEVICE_STATE: DeviceState = DeviceState::new();
+}
+
+static mut GUARD: Option<CallbackGuard<fn(&MousePosition)>> = None;
 
 use eframe::{
     egui::{self, Ui},
     AppCreator,
 };
+use lazy_static::lazy_static;
 pub struct App {
     name: String,
     size: (f32, f32),
     state: bool,
     sender: Sender<bool>,
-    recored_thread: JoinHandle<()>,
+    _recored_thread: JoinHandle<()>,
 }
 
 impl App {
@@ -27,14 +34,23 @@ impl App {
         let recored_receiver = Arc::clone(&receiver);
         let recored_thread = thread::spawn(move || loop {
             let state = recored_receiver.as_ref().lock().unwrap().recv().unwrap();
-            println!("state is {}", state);
+            unsafe {
+                if state {
+                    GUARD = Some(DEVICE_STATE.on_mouse_move(move |position| {
+                        panic!("here you go");
+                        println!("mouse position: {}:{}", position.0, position.1);
+                    }));
+                } else {
+                    GUARD = None;
+                }
+            }
         });
         Self {
             name: "Wise Key".to_string(),
             size: (500.0, 500.0),
             state: false,
             sender,
-            recored_thread,
+            _recored_thread: recored_thread,
         }
     }
     pub fn run() -> eframe::Result<()> {
