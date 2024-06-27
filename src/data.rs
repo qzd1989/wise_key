@@ -1,14 +1,13 @@
 use std::{
     sync::{
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Sender},
         Arc, Mutex,
     },
     thread::{self, JoinHandle},
 };
 
-type StateReceiveJob = Arc<Mutex<Receiver<bool>>>;
-
 use device_query::{DeviceEvents, DeviceState};
+
 use eframe::{
     egui::{self, Ui},
     AppCreator,
@@ -16,24 +15,26 @@ use eframe::{
 pub struct App {
     name: String,
     size: (f32, f32),
-    pub position: Option<(i32, i32)>,
-    pub state: bool,
+    state: bool,
     sender: Sender<bool>,
-    receiver: StateReceiveJob,
-    recorder: Option<Recorder>,
+    recored_thread: JoinHandle<()>,
 }
 
 impl App {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        let recored_receiver = Arc::clone(&receiver);
+        let recored_thread = thread::spawn(move || loop {
+            let state = recored_receiver.as_ref().lock().unwrap().recv().unwrap();
+            println!("state is {}", state);
+        });
         Self {
             name: "Wise Key".to_string(),
             size: (500.0, 500.0),
-            position: Some((0, 0)),
             state: false,
-            sender: sender,
-            receiver: Arc::new(Mutex::new(receiver)),
-            recorder: None,
+            sender,
+            recored_thread,
         }
     }
     pub fn run() -> eframe::Result<()> {
@@ -50,9 +51,6 @@ impl App {
         let label = if self.state { "Stop" } else { "Start" };
         if ui.button(label).clicked() {
             self.state = !self.state;
-            if self.state {
-                self.recorder = Some(Recorder::new(Arc::clone(&self.receiver)));
-            }
             self.sender.send(self.state).unwrap();
         }
     }
@@ -61,31 +59,5 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| self.ui(ui));
-    }
-}
-
-struct Recorder {
-    thread: Option<JoinHandle<()>>,
-}
-
-impl Recorder {
-    fn new(receiver: StateReceiveJob) -> Self {
-        let thread: JoinHandle<()> = thread::spawn(move || loop {
-            let state = receiver.as_ref().lock().unwrap().recv().unwrap();
-            let device_state: DeviceState = DeviceState::new();
-            let guard = device_state.on_mouse_move(move |position| {
-                println!("mouse position: {}:{}", position.0, position.1);
-            });
-            'inner: loop {
-                //when state is false, I want to stop guard thread, but it seems I can't use state in this scope
-                if !state {
-                    drop(guard); //not working
-                    break 'inner; //not working
-                }
-            }
-        });
-        Self {
-            thread: Some(thread),
-        }
     }
 }
