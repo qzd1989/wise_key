@@ -4,17 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-eframe = { features = [
-    "default",
-    "__screenshot", # __screenshot is so we can dump a screenshot using EFRAME_SCREENSHOT_TO
-] }
-
-# For image support:
-egui_extras = { features = ["default", "image"] }
-
 #inputs simulation
-enigo = "0.2.1"
+enigo = "*"
 
 #inputs record
-device_query = "2.1.0"
-lazy_static = "1.5.0"
+rdev = { path = "src/rdev", features = ["unstable_grab"] }
+
+#global
+lazy_static = "*"
+
+#embed code
+rhai = { version = "*", features = ["internals", "only_i32"] }
+
+#clipboard
+arboard = "*"
+
+crossbeam-channel = "*"
