@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-#inputs simulation
-enigo = "*"
 
 #inputs record
 rdev = { path = "src/rdev", features = ["unstable_grab"] }

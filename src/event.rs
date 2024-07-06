@@ -2,7 +2,7 @@ use std::{fmt::Debug, thread::sleep, time::Duration};
 
 use rdev::{simulate as _simulate, Button, EventType, Key, SimulateError};
 
-use crate::{common::KeyConvert, global::*};
+use crate::{global::*, impls::KeyConvert};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Coordinate {
