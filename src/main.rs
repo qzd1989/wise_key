@@ -1,12 +1,13 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use std::{thread::sleep, time::Duration};
 mod app;
 mod common;
 mod event;
-mod global;
 mod impls;
-use app::App;
-use std::{thread, time::Duration};
-
+#[macro_use]
+mod macros;
 fn main() {
-    App::new().run();
-    thread::sleep(Duration::from_secs(3600));
+    env_logger::init();
+    app::App::new().run();
+    sleep(Duration::from_secs(3600));
 }

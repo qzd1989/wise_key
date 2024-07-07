@@ -3,18 +3,36 @@ name = "wise_key"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+build = "build.rs"
 
-#inputs record
+[dependencies]
+#database
+sqlite = "*"
+
+#inputs record and simulate
 rdev = { path = "src/rdev", features = ["unstable_grab"] }
 
 #global
 lazy_static = "*"
 
 #embed code
+#internal supports channel message, only_i32 supports register generic fn
 rhai = { version = "*", features = ["internals", "only_i32"] }
 
 #clipboard
 arboard = "*"
 
+#channel support
 crossbeam-channel = "*"
+
+#egui support
+eframe = { features = [
+    "default",
+    "__screenshot", # __screenshot is so we can dump a screenshot using EFRAME_SCREENSHOT_TO
+] }
+#egui image support:
+egui_extras = { features = ["default", "image"] }
+
+#log
+env_logger = "*"
+log = "*"

@@ -1,190 +1,40 @@
-use crate::{
-    event::{Coordinate, Event},
-    global::instant_elapse_millis,
-};
-use rdev::{Event as _Event, EventType, Key};
+///global impls
+use crate::common::{Float, Int, UInt};
 
-impl Into<Event> for _Event {
-    fn into(self) -> Event {
-        let elapse = instant_elapse_millis();
-        match self.event_type {
-            EventType::KeyPress(key) => Event::KeyPress {
-                key,
-                elapse,
-                duration: 0,
-            },
-            EventType::KeyRelease(key) => Event::KeyRelease {
-                key,
-                elapse,
-                duration: 0,
-            },
-            EventType::ButtonPress { button, x, y } => Event::ButtonPress {
-                button,
-                x,
-                y,
-                coordinate: Coordinate::Abs,
-                elapse,
-                duration: 0,
-            },
-            EventType::ButtonRelease { button, x, y } => Event::ButtonRelease {
-                button,
-                x,
-                y,
-                coordinate: Coordinate::Abs,
-                elapse,
-                duration: 0,
-            },
-            EventType::Drag { button, x, y } => Event::Drag {
-                button,
-                x,
-                y,
-                elapse,
-                duration: 0,
-            },
-            EventType::MouseMove { x, y } => Event::MouseMove {
-                x,
-                y,
-                elapse,
-                duration: 0,
-            },
-            EventType::Wheel { delta_x, delta_y } => Event::Wheel {
-                delta_x,
-                delta_y,
-                elapse,
-                duration: 0,
-            },
-        }
+pub trait TraitInto<T> {
+    fn into_diy(self) -> T;
+}
+
+impl TraitInto<Int> for i64 {
+    fn into_diy(self) -> Int {
+        self as Int
     }
 }
 
-impl Into<EventType> for Event {
-    fn into(self) -> EventType {
-        match self {
-            Event::KeyPress { key, .. } => EventType::KeyPress(key),
-            Event::KeyRelease { key, .. } => EventType::KeyRelease(key),
-            Event::ButtonPress { button, x, y, .. } => EventType::ButtonPress { button, x, y },
-            Event::ButtonRelease { button, x, y, .. } => EventType::ButtonRelease { button, x, y },
-            Event::MouseMove { x, y, .. } => EventType::MouseMove { x, y },
-            Event::Drag { button, x, y, .. } => EventType::Drag { button, x, y },
-            Event::Wheel {
-                delta_x, delta_y, ..
-            } => EventType::Wheel { delta_x, delta_y },
-        }
+impl TraitInto<Float> for i64 {
+    fn into_diy(self) -> Float {
+        self as Float
     }
 }
 
-pub trait KeyConvert {
-    fn as_str(&self) -> &str;
+impl TraitInto<UInt> for i64 {
+    fn into_diy(self) -> UInt {
+        self as UInt
+    }
 }
-impl KeyConvert for Key {
-    fn as_str(&self) -> &str {
-        match self {
-            Key::Alt => "Alt",
-            Key::AltGr => "AltGr",
-            Key::Backspace => "Backspace",
-            Key::CapsLock => "CapsLock",
-            Key::ControlLeft => "ControlLeft",
-            Key::ControlRight => "ControlRight",
-            Key::Delete => "Delete",
-            Key::DownArrow => "DownArrow",
-            Key::End => "End",
-            Key::Escape => "Escape",
-            Key::F1 => "f1",
-            Key::F10 => "f10",
-            Key::F11 => "f11",
-            Key::F12 => "f12",
-            Key::F2 => "f2",
-            Key::F3 => "f3",
-            Key::F4 => "f4",
-            Key::F5 => "f5",
-            Key::F6 => "f6",
-            Key::F7 => "f7",
-            Key::F8 => "f8",
-            Key::F9 => "f9",
-            Key::Home => "Home",
-            Key::LeftArrow => "LeftArrow",
-            Key::MetaLeft => "MetaLeft",
-            Key::MetaRight => "MetaRight",
-            Key::PageDown => "PageDown",
-            Key::PageUp => "PageUp",
-            Key::Return => "Return",
-            Key::RightArrow => "RightArrow",
-            Key::ShiftLeft => "ShiftLeft",
-            Key::ShiftRight => "ShiftRight",
-            Key::Space => "Space",
-            Key::Tab => "Tab",
-            Key::UpArrow => "UpArrow",
-            Key::PrintScreen => "PrintScreen",
-            Key::ScrollLock => "ScrollLock",
-            Key::Pause => "Pause",
-            Key::NumLock => "NumLock",
-            Key::BackQuote => "BackQuote",
-            Key::Num1 => "n1",
-            Key::Num2 => "n",
-            Key::Num3 => "n3",
-            Key::Num4 => "n4",
-            Key::Num5 => "n5",
-            Key::Num6 => "n6",
-            Key::Num7 => "n7",
-            Key::Num8 => "n8",
-            Key::Num9 => "n9",
-            Key::Num0 => "n0",
-            Key::Minus => "Minus",
-            Key::Equal => "Equal",
-            Key::KeyQ => "q",
-            Key::KeyW => "w",
-            Key::KeyE => "e",
-            Key::KeyR => "r",
-            Key::KeyT => "t",
-            Key::KeyY => "y",
-            Key::KeyU => "u",
-            Key::KeyI => "i",
-            Key::KeyO => "o",
-            Key::KeyP => "p",
-            Key::LeftBracket => "LeftBracket",
-            Key::RightBracket => "RightBracket",
-            Key::KeyA => "a",
-            Key::KeyS => "s",
-            Key::KeyD => "d",
-            Key::KeyF => "f",
-            Key::KeyG => "g",
-            Key::KeyH => "h",
-            Key::KeyJ => "j",
-            Key::KeyK => "k",
-            Key::KeyL => "l",
-            Key::SemiColon => "SemiColon",
-            Key::Quote => "Quote",
-            Key::BackSlash => "BackSlash",
-            Key::IntlBackslash => "IntlBackslash",
-            Key::KeyZ => "z",
-            Key::KeyX => "x",
-            Key::KeyC => "c",
-            Key::KeyV => "v",
-            Key::KeyB => "b",
-            Key::KeyN => "n",
-            Key::KeyM => "m",
-            Key::Comma => "Comma",
-            Key::Dot => "Dot",
-            Key::Slash => "Slash",
-            Key::Insert => "Insert",
-            Key::KpReturn => "KpReturn",
-            Key::KpMinus => "KpMinus",
-            Key::KpPlus => "KpPlus",
-            Key::KpMultiply => "KpMultiply",
-            Key::KpDivide => "KpDivide",
-            Key::Kp0 => "Kp0",
-            Key::Kp1 => "Kp1",
-            Key::Kp2 => "Kp2",
-            Key::Kp3 => "Kp3",
-            Key::Kp4 => "Kp4",
-            Key::Kp5 => "Kp5",
-            Key::Kp6 => "Kp6",
-            Key::Kp7 => "Kp7",
-            Key::Kp8 => "Kp8",
-            Key::Kp9 => "Kp9",
-            Key::KpDelete => "KpDelete",
-            Key::Function => "Function",
-            Key::Unknown(_) => "Unknown",
-        }
+
+pub trait TraitReverseInto<T> {
+    fn into_std(self) -> T;
+}
+
+impl TraitReverseInto<i64> for Int {
+    fn into_std(self) -> i64 {
+        self as i64
+    }
+}
+
+impl TraitReverseInto<u64> for UInt {
+    fn into_std(self) -> u64 {
+        self as u64
     }
 }

@@ -1,43 +1,195 @@
-use crate::{
-    event::Event,
-    global::{
-        clean_instant, generate_script_filepath, init_instant, run_rhai, state_send, write_to_file,
-    },
-};
-use rdev::{
-    grab as _grab, listen as _listen, stop_listen as _stop_listen, Event as _Event, EventType, Key,
-};
+#[allow(unused_imports)]
+use crate::i;
+#[allow(unused_imports)]
+use log::{info, warn};
+
 use std::{
-    sync::{Arc, Mutex},
-    thread::spawn,
+    sync::{Arc, RwLock},
+    thread::{spawn, JoinHandle},
 };
 
-#[derive(Clone, Copy)]
-struct HotKey {
-    stop: Key,
-    record: Key,
-    execute: Key,
-}
+use crate::{
+    common::{clean_instant, init_instant, simulate_state_send, Int},
+    event::{events_to_data, grab, Data, Event, Key},
+};
 
-impl HotKey {
-    fn new(record: Key, execute: Key, stop: Key) -> Self {
-        Self {
-            record,
-            execute,
-            stop,
+pub struct App {
+    hotkey: Arc<RwLock<HotKey>>,
+    loop_times: Arc<RwLock<LoopTimes>>,
+    mouse_filter: Arc<RwLock<bool>>,
+    events: Arc<RwLock<Vec<Event>>>,
+    data: Arc<RwLock<Option<Data>>>,
+    state: Arc<RwLock<State>>,
+    grab_handle: Option<JoinHandle<()>>,
+}
+impl App {
+    pub fn new() -> Self {
+        let mut app = Self {
+            hotkey: Arc::new(RwLock::new(HotKey::default())),
+            mouse_filter: Arc::new(RwLock::new(false)),
+            loop_times: Arc::new(RwLock::new(LoopTimes::Limited(1))),
+            state: Arc::new(RwLock::new(State::default())),
+            events: Arc::new(RwLock::new(Vec::new())),
+            data: Arc::new(RwLock::new(None)),
+            grab_handle: None,
+        };
+        let hotkey = Arc::clone(&app.hotkey);
+        let mouse_filter = Arc::clone(&app.mouse_filter);
+        let loop_times = Arc::clone(&app.loop_times);
+        let state = Arc::clone(&app.state);
+        let events = Arc::clone(&app.events);
+        let data: Arc<RwLock<Option<Data>>> = Arc::clone(&app.data);
+        app.grab_handle = Some(spawn(move || {
+            Self::_grab(hotkey, mouse_filter, loop_times, state, events, data)
+        }));
+        app
+    }
+    pub fn run(&self) {}
+    fn _grab(
+        hotkey: Arc<RwLock<HotKey>>,
+        mouse_filter: Arc<RwLock<bool>>,
+        loop_times: Arc<RwLock<LoopTimes>>,
+        state: Arc<RwLock<State>>,
+        events: Arc<RwLock<Vec<Event>>>,
+        data: Arc<RwLock<Option<Data>>>,
+    ) {
+        let state_clone = Arc::clone(&state);
+        if let Err(_) = grab(move |_event| {
+            let hotkey = Arc::clone(&hotkey);
+            let mouse_filter = Arc::clone(&mouse_filter);
+            let loop_times = Arc::clone(&loop_times);
+            let state = Arc::clone(&state);
+            let events_stop = Arc::clone(&events);
+            let events_push = Arc::clone(&events);
+            let data = Arc::clone(&data);
+            let event: Event = _event.clone().into();
+            match event {
+                Event::KeyPress { key, .. } if hotkey.read().unwrap().contains(&key) => None,
+                Event::KeyRelease { key, .. } if key == hotkey.read().unwrap().record => {
+                    info!("recording");
+                    if *state.write().unwrap() != State::Stop {
+                        return None;
+                    }
+                    Self::_record(state);
+                    None
+                }
+                Event::KeyRelease { key, .. } if key == hotkey.read().unwrap().simulate => {
+                    info!("simulating");
+                    if *state.write().unwrap() != State::Stop {
+                        return None;
+                    }
+                    spawn(move || {
+                        Self::_simulate(state, loop_times, data);
+                    });
+                    None
+                }
+                Event::KeyRelease { key, .. } if key == hotkey.read().unwrap().stop => {
+                    info!("stopping");
+                    if *state.write().unwrap() == State::Stop {
+                        return None;
+                    }
+                    Self::_stop(state, events_stop, data);
+                    None
+                }
+                _ => match *state.read().unwrap() {
+                    State::Record => match (*mouse_filter.read().unwrap(), event) {
+                        (true, Event::MouseMove { .. }) => Some(_event),
+                        _ => {
+                            Self::_push(event, events_push);
+                            Some(_event)
+                        }
+                    },
+                    _ => Some(_event),
+                },
+            }
+        }) {
+            //show error to user
+        } else {
+            *state_clone.write().unwrap() = State::Stop;
         }
     }
-    fn contains(&self, key: &Key) -> bool {
-        let keys = vec![self.record, self.execute, self.stop];
-        keys.contains(key)
+    fn _simulate(
+        state: Arc<RwLock<State>>,
+        loop_times: Arc<RwLock<LoopTimes>>,
+        data: Arc<RwLock<Option<Data>>>,
+    ) {
+        *state.write().unwrap() = State::Simulate;
+        let data_guard = data.read().unwrap();
+        if let Some(ref data) = *data_guard {
+            let data = data.clone();
+            let state = Arc::clone(&state);
+            //在一个线程的话无法继续监听hotkey
+            spawn(move || {
+                match *loop_times.read().unwrap() {
+                    LoopTimes::Unlimited => {
+                        while *state.read().unwrap() != State::Stop {
+                            if let Err(_) = data.simulate() {
+                                //show error to user
+                                break;
+                            }
+                        }
+                    }
+                    LoopTimes::Limited(times) => {
+                        for _ in 0..times {
+                            if let Err(_) = data.simulate() {
+                                //show error to user
+                                break;
+                            }
+                        }
+                    }
+                };
+                //stop
+                *state.write().unwrap() = State::Stop;
+            });
+        } else {
+            *state.write().unwrap() = State::Stop;
+        }
+    }
+    fn _record(state: Arc<RwLock<State>>) {
+        *state.write().unwrap() = State::Record;
+        init_instant();
+    }
+    fn _stop(
+        state: Arc<RwLock<State>>,
+        events: Arc<RwLock<Vec<Event>>>,
+        data: Arc<RwLock<Option<Data>>>,
+    ) {
+        clean_instant();
+        let previous_state = state.read().unwrap().clone();
+        *state.write().unwrap() = State::Stop;
+        let len = events.read().unwrap().len().clone();
+        match (previous_state, len > 0) {
+            (State::Record, true) => {
+                *data.write().unwrap() = Some(events_to_data(&*events.read().unwrap()));
+                *events.write().unwrap() = Vec::new();
+            }
+            (State::Simulate, _) => {
+                simulate_state_send(true);
+            }
+            (_, _) => {}
+        };
+        let guard = data.read().unwrap();
+        if let Some(ref data) = *guard {
+            info!("data: {:?}", data.content);
+        }
+    }
+    fn _push(event: Event, events: Arc<RwLock<Vec<Event>>>) {
+        let event = Event::build(event, events.read().unwrap().last());
+        match events.try_write() {
+            Ok(mut events) => {
+                info!("pushing {:?}", event);
+                events.push(event);
+            }
+            Err(err) => warn!("{:?}", err),
+        };
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum State {
     Stop,
     Record,
-    Execute,
+    Simulate,
 }
 
 impl State {
@@ -47,174 +199,29 @@ impl State {
 }
 
 #[derive(Clone, Copy)]
+struct HotKey {
+    pub stop: Key,
+    pub record: Key,
+    pub simulate: Key,
+}
+
+impl HotKey {
+    fn default() -> Self {
+        Self {
+            record: Key::F10,
+            simulate: Key::F11,
+            stop: Key::F12,
+        }
+    }
+    fn contains(&self, key: &Key) -> bool {
+        let keys = vec![self.record, self.simulate, self.stop];
+        keys.contains(key)
+    }
+}
+
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 enum LoopTimes {
-    Infinite, //why should I use dead_code?  variant `Infinite` is never constructed `LoopTime` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis `#[warn(dead_code)]` on by defaultrustcClick for full compiler diagnostic
-    Finite(u32),
-}
-
-pub struct App {
-    state: State,
-    loop_times: LoopTimes,
-    events: Vec<Event>,
-    mouse_move_filter: bool,
-    hotkeys: HotKey,
-    filepath: Option<String>,
-}
-
-impl App {
-    pub fn new() -> Self {
-        Self {
-            state: State::default(),
-            events: Vec::new(),
-            mouse_move_filter: false,
-            loop_times: LoopTimes::Finite(1),
-            hotkeys: HotKey::new(Key::Num1, Key::Num2, Key::Num3),
-            filepath: Some(String::from("scripts/example.rhai")),
-        }
-    }
-
-    pub fn run(self) -> Arc<Mutex<Self>> {
-        let app = Arc::new(Mutex::new(self));
-        let app_clone = Arc::clone(&app);
-        grab(app_clone);
-        app
-    }
-
-    fn push(&mut self, event: Event) {
-        self.events.push(Event::build(event, self.events.last()));
-    }
-
-    pub fn record(&mut self, callback: Box<dyn FnOnce() + 'static>) {
-        self.state = State::Record;
-        self.events.truncate(0);
-        init_instant();
-        callback();
-    }
-
-    pub fn stop(&mut self) {
-        self.state = State::Stop;
-        clean_instant();
-    }
-
-    pub fn save_to_file(&mut self) {
-        self.filepath = Some(generate_script_filepath());
-        if let Some(filepath) = &self.filepath {
-            self.events.iter().for_each(|event| {
-                write_to_file(filepath, event.to_rhai());
-            });
-        }
-    }
-
-    fn execute(&mut self, callback: Box<dyn FnOnce(String) + 'static>) {
-        self.state = State::Execute;
-        if let Some(filepath) = &self.filepath {
-            callback(String::from(filepath.clone()));
-        }
-    }
-}
-
-fn grab(app: Arc<Mutex<App>>) {
-    let app_clone_for_hotkeys = Arc::clone(&app);
-    let hotkey = app_clone_for_hotkeys.lock().unwrap().hotkeys.clone();
-    spawn(move || {
-        if let Err(error) = _grab(move |event| match event.event_type {
-            EventType::KeyRelease(key) if key == hotkey.record => {
-                println!("recording");
-                let mut app_lock = app.lock().unwrap();
-                if app_lock.state != State::Stop {
-                    return Some(event);
-                }
-                let app_clone = Arc::clone(&app);
-                let record_callback = Box::new(move || {
-                    spawn(move || {
-                        _listen(move |event| {
-                            let app_clone = Arc::clone(&app_clone);
-                            callback(event, app_clone);
-                        })
-                    });
-                });
-                app_lock.record(record_callback);
-                Some(event)
-            }
-            EventType::KeyRelease(key) if key == hotkey.execute => {
-                println!("executing");
-                let mut app_lock = app.lock().unwrap();
-                if app_lock.state != State::Stop {
-                    return Some(event);
-                }
-                let loop_times = app_lock.loop_times.clone();
-                let app_execute = Arc::clone(&app);
-                let app_single_operation = Arc::clone(&app);
-                let app_state = Arc::clone(&app);
-                let single = move |filepath: String| {
-                    println!("executing");
-                    if let Err(err) = run_rhai(filepath.as_str()) {
-                        println!("run rhai error: {:?}", err);
-                        app_single_operation.lock().unwrap().stop();
-                    }
-                };
-                let execute_callback = Box::new(move |filepath: String| {
-                    spawn(move || {
-                        match loop_times {
-                            LoopTimes::Infinite => {
-                                while app_state.lock().unwrap().state != State::Stop {
-                                    single(filepath.clone());
-                                }
-                            }
-                            LoopTimes::Finite(times) => {
-                                for _ in 0..times {
-                                    single(filepath.clone());
-                                }
-                            }
-                        }
-                        app_execute.lock().unwrap().stop();
-                    });
-                });
-                app_lock.execute(execute_callback);
-                None
-            }
-            EventType::KeyRelease(key) if key == hotkey.stop => {
-                println!("stopping");
-                let mut app_lock = app.lock().unwrap();
-                if app_lock.state == State::Record {
-                    app_lock.save_to_file();
-                }
-                if app_lock.state == State::Execute {
-                    state_send(true);
-                }
-                if app_lock.state == State::Stop {
-                    return Some(event);
-                }
-                app_lock.stop();
-                spawn(|| {
-                    _stop_listen();
-                });
-                Some(event)
-            }
-            _ => Some(event),
-        }) {
-            println!("grab error: {:?}", error);
-        }
-    });
-}
-
-fn callback(event: _Event, app: Arc<Mutex<App>>) {
-    let mut app = app.lock().unwrap();
-    let event = event.into();
-    match (app.mouse_move_filter, event) {
-        (_, Event::KeyPress { key, .. }) if app.hotkeys.contains(&key) => {
-            //hotkeys won't be pushed
-        }
-        (_, Event::KeyRelease { key, .. }) if app.hotkeys.contains(&key) => {
-            //hotkeys won't be pushed
-        }
-        (true, Event::MouseMove { .. }) => {
-            //MouseMove won't be pushed if mouse_move_filter is true
-        }
-        _ => {
-            println!("pushing: {:?}", event);
-            app.push(event);
-        }
-    }
+    Unlimited,
+    Limited(Int),
 }
