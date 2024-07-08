@@ -66,41 +66,21 @@ impl App {
             match event {
                 Event::KeyPress { key, .. } if hotkey.read().unwrap().contains(&key) => None,
                 Event::KeyRelease { key, .. } if key == hotkey.read().unwrap().record => {
-                    info!("recording");
-                    if *state.write().unwrap() != State::Stop {
-                        return None;
-                    }
-                    Self::_record(state);
+                    Self::record(state);
                     None
                 }
                 Event::KeyRelease { key, .. } if key == hotkey.read().unwrap().simulate => {
-                    info!("simulating");
-                    if *state.write().unwrap() != State::Stop {
-                        return None;
-                    }
-                    spawn(move || {
-                        Self::_simulate(state, loop_times, data);
-                    });
+                    Self::simulate(state, loop_times, data);
                     None
                 }
                 Event::KeyRelease { key, .. } if key == hotkey.read().unwrap().stop => {
-                    info!("stopping");
-                    if *state.write().unwrap() == State::Stop {
-                        return None;
-                    }
-                    Self::_stop(state, events_stop, data);
+                    Self::stop(state, events_stop, data);
                     None
                 }
-                _ => match *state.read().unwrap() {
-                    State::Record => match (*mouse_filter.read().unwrap(), event) {
-                        (true, Event::MouseMove { .. }) => Some(_event),
-                        _ => {
-                            Self::_push(event, events_push);
-                            Some(_event)
-                        }
-                    },
-                    _ => Some(_event),
-                },
+                _ => {
+                    Self::_push(state, mouse_filter, event, events_push);
+                    Some(_event)
+                }
             }
         }) {
             //show error to user
@@ -108,52 +88,23 @@ impl App {
             *state_clone.write().unwrap() = State::Stop;
         }
     }
-    fn _simulate(
-        state: Arc<RwLock<State>>,
-        loop_times: Arc<RwLock<LoopTimes>>,
-        data: Arc<RwLock<Option<Data>>>,
-    ) {
-        *state.write().unwrap() = State::Simulate;
-        let data_guard = data.read().unwrap();
-        if let Some(ref data) = *data_guard {
-            let data = data.clone();
-            let state = Arc::clone(&state);
-            //在一个线程的话无法继续监听hotkey
-            spawn(move || {
-                match *loop_times.read().unwrap() {
-                    LoopTimes::Unlimited => {
-                        while *state.read().unwrap() != State::Stop {
-                            if let Err(_) = data.simulate() {
-                                //show error to user
-                                break;
-                            }
-                        }
-                    }
-                    LoopTimes::Limited(times) => {
-                        for _ in 0..times {
-                            if let Err(_) = data.simulate() {
-                                //show error to user
-                                break;
-                            }
-                        }
-                    }
-                };
-                //stop
-                *state.write().unwrap() = State::Stop;
-            });
-        } else {
-            *state.write().unwrap() = State::Stop;
+    fn record(state: Arc<RwLock<State>>) {
+        info!("recording");
+        if *state.write().unwrap() != State::Stop {
+            return;
         }
-    }
-    fn _record(state: Arc<RwLock<State>>) {
         *state.write().unwrap() = State::Record;
         init_instant();
     }
-    fn _stop(
+    fn stop(
         state: Arc<RwLock<State>>,
         events: Arc<RwLock<Vec<Event>>>,
         data: Arc<RwLock<Option<Data>>>,
     ) {
+        info!("stopping");
+        if *state.write().unwrap() == State::Stop {
+            return;
+        }
         clean_instant();
         let previous_state = state.read().unwrap().clone();
         *state.write().unwrap() = State::Stop;
@@ -173,15 +124,72 @@ impl App {
             info!("data: {:?}", data.content);
         }
     }
-    fn _push(event: Event, events: Arc<RwLock<Vec<Event>>>) {
-        let event = Event::build(event, events.read().unwrap().last());
-        match events.try_write() {
-            Ok(mut events) => {
-                info!("pushing {:?}", event);
-                events.push(event);
+
+    fn simulate(
+        state: Arc<RwLock<State>>,
+        loop_times: Arc<RwLock<LoopTimes>>,
+        data: Arc<RwLock<Option<Data>>>,
+    ) {
+        info!("simulating");
+        if *state.write().unwrap() != State::Stop {
+            return;
+        }
+        spawn(move || {
+            *state.write().unwrap() = State::Simulate;
+            let data_guard = data.read().unwrap();
+            if let Some(ref data) = *data_guard {
+                let data = data.clone();
+                let state = Arc::clone(&state);
+                //在一个线程的话无法继续监听hotkey
+                spawn(move || {
+                    match *loop_times.read().unwrap() {
+                        LoopTimes::Unlimited => {
+                            while *state.read().unwrap() != State::Stop {
+                                if let Err(_) = data.simulate() {
+                                    //show error to user
+                                    break;
+                                }
+                            }
+                        }
+                        LoopTimes::Limited(times) => {
+                            for _ in 0..times {
+                                if let Err(_) = data.simulate() {
+                                    //show error to user
+                                    break;
+                                }
+                            }
+                        }
+                    };
+                    //stop
+                    *state.write().unwrap() = State::Stop;
+                });
+            } else {
+                *state.write().unwrap() = State::Stop;
             }
-            Err(err) => warn!("{:?}", err),
-        };
+        });
+    }
+    fn _push(
+        state: Arc<RwLock<State>>,
+        mouse_filter: Arc<RwLock<bool>>,
+        event: Event,
+        events: Arc<RwLock<Vec<Event>>>,
+    ) {
+        match *state.read().unwrap() {
+            State::Record => match (*mouse_filter.read().unwrap(), event) {
+                (true, Event::MouseMove { .. }) => {}
+                _ => {
+                    let event = Event::build(event, events.read().unwrap().last());
+                    match events.try_write() {
+                        Ok(mut events) => {
+                            info!("pushing {:?}", event);
+                            events.push(event);
+                        }
+                        Err(err) => warn!("{:?}", err),
+                    };
+                }
+            },
+            _ => {}
+        }
     }
 }
 
