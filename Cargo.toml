@@ -10,7 +10,7 @@ build = "build.rs"
 sqlite = "*"
 
 #inputs record and simulate
-rdev = { path = "src/rdev", features = ["unstable_grab"] }
+rdev = { git = "https://github.com/qzd1989/rdev", features = ["unstable_grab"] }
 
 #global
 lazy_static = "*"

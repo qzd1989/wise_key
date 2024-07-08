@@ -7,8 +7,7 @@ use super::{rhai::run, Data, Event};
 use crate::common::{Float, Int, UInt};
 use rdev::{
     get_current_mouse_location as _get_current_mouse_location, grab as _grab, listen as _listen,
-    simulate as _simulate, stop_grab as _stop_grab, stop_listen as _stop_listen, Event as _Event,
-    EventType as _EventType,
+    simulate as _simulate, stop_listen as _stop_listen, Event as _Event, EventType as _EventType,
 };
 use rhai::EvalAltResult;
 pub fn grab<T>(callback: T) -> Result<(), GrabError>
@@ -23,10 +22,7 @@ where
         }
     }
 }
-#[allow(dead_code)]
-pub fn stop_grab() {
-    _stop_grab();
-}
+
 #[allow(dead_code)]
 pub fn listen<T>(callback: T) -> Result<(), ListenError>
 where
