@@ -1,15 +1,19 @@
 #[allow(unused_imports)]
 use crate::i;
+use egui::{Image, ImageSource, TextureId};
+use image::DynamicImage;
 #[allow(unused_imports)]
 use log::{info, warn};
 
 use std::{
+    io::Read,
     sync::{Arc, RwLock},
     thread::{spawn, JoinHandle},
 };
 
 use crate::{
-    common::{clean_instant, init_instant, simulate_state_send, Int},
+    capture,
+    common::{clean_instant, init_instant, simulate_state_send, Int, CAPTURE_CHANNEL},
     event::{events_to_data, grab, Data, Event, Key},
 };
 
@@ -20,8 +24,16 @@ pub struct App {
     events: Arc<RwLock<Vec<Event>>>,
     data: Arc<RwLock<Option<Data>>>,
     state: Arc<RwLock<State>>,
+    capture_image: Arc<RwLock<Option<DynamicImage>>>,
+    capture_image_handle: Option<JoinHandle<()>>,
     grab_handle: Option<JoinHandle<()>>,
 }
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl App {
     pub fn new() -> Self {
         let mut app = Self {
@@ -31,6 +43,8 @@ impl App {
             state: Arc::new(RwLock::new(State::default())),
             events: Arc::new(RwLock::new(Vec::new())),
             data: Arc::new(RwLock::new(None)),
+            capture_image: Arc::new(RwLock::new(None)),
+            capture_image_handle: None,
             grab_handle: None,
         };
         let hotkey = Arc::clone(&app.hotkey);
@@ -38,13 +52,32 @@ impl App {
         let loop_times = Arc::clone(&app.loop_times);
         let state = Arc::clone(&app.state);
         let events = Arc::clone(&app.events);
-        let data: Arc<RwLock<Option<Data>>> = Arc::clone(&app.data);
+        let data = Arc::clone(&app.data);
+        let capture_image = Arc::clone(&app.capture_image);
         app.grab_handle = Some(spawn(move || {
             Self::_grab(hotkey, mouse_filter, loop_times, state, events, data)
         }));
+        app.capture_image_handle = Some(spawn(move || loop {
+            let capture_image = Arc::clone(&capture_image);
+            match CAPTURE_CHANNEL.1.try_recv() {
+                Ok(image) => {
+                    info!("get image form CAPTURE_CHANNEL");
+                    Self::_capture_image(capture_image, image);
+                }
+                Err(err) => {
+                    // println!("CAPTURE_CHANNEL.1.try_recv error: {:?}", err);
+                }
+            };
+        }));
+        spawn(|| {
+            capture::run();
+        });
         app
     }
     pub fn run(&self) {}
+    fn _capture_image(capture_image: Arc<RwLock<Option<DynamicImage>>>, image: DynamicImage) {
+        *capture_image.write().unwrap() = Some(image);
+    }
     fn _grab(
         hotkey: Arc<RwLock<HotKey>>,
         mouse_filter: Arc<RwLock<bool>>,
@@ -90,7 +123,7 @@ impl App {
     }
     fn record(state: Arc<RwLock<State>>) {
         info!("recording");
-        if *state.write().unwrap() != State::Stop {
+        if *state.read().unwrap() != State::Stop {
             return;
         }
         *state.write().unwrap() = State::Record;
@@ -102,7 +135,7 @@ impl App {
         data: Arc<RwLock<Option<Data>>>,
     ) {
         info!("stopping");
-        if *state.write().unwrap() == State::Stop {
+        if *state.read().unwrap() == State::Stop {
             return;
         }
         clean_instant();
@@ -131,7 +164,7 @@ impl App {
         data: Arc<RwLock<Option<Data>>>,
     ) {
         info!("simulating");
-        if *state.write().unwrap() != State::Stop {
+        if *state.read().unwrap() != State::Stop {
             return;
         }
         spawn(move || {
@@ -232,4 +265,54 @@ impl HotKey {
 enum LoopTimes {
     Unlimited,
     Limited(Int),
+}
+
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, move |ui| {
+            egui::ScrollArea::both().show(ui, move |ui| {});
+        });
+    }
+}
+
+/*
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, move |ui| {
+            egui::ScrollArea::both().show(ui, move |ui| {
+                let capture_image = self.capture_image.read().unwrap();
+                match &*capture_image {
+                    Some(dynamic_image) => match dynamic_image {
+                        DynamicImage::ImageRgba8(_) => {
+                            let texture = Some(load_texture_from_image(ctx, dynamic_image.clone()));
+                            if let Some(texture) = texture {
+                                // ui.image(&texture);
+                            }
+                        }
+                        _ => {}
+                        _ => {}
+                    },
+                    None => {}
+                }
+            });
+        });
+    }
+}
+ */
+fn load_texture_from_image(ctx: &egui::Context, img: DynamicImage) -> egui::TextureHandle {
+    // 确保图像是 RGBA8 格式
+    let img = img.to_rgba8();
+
+    // 获取图像的宽度和高度
+    let (width, height) = img.dimensions();
+
+    // 将图像数据转换为字节数组
+    let pixels: Vec<u8> = img.into_raw();
+
+    // 创建一个 egui 纹理
+    let color_image =
+        egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels);
+
+    // 加载纹理并返回
+    ctx.load_texture("my_texture", color_image, egui::TextureOptions::NEAREST)
 }
