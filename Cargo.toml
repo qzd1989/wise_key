@@ -9,6 +9,7 @@ build = "build.rs"
 #global
 image = { version = "*", features = ["jpeg", "png"] }
 pollster = "*"
+lazy_static = "*"
 
 #about gui
 egui = "*"
@@ -21,9 +22,6 @@ sqlite = "*"
 
 #inputs record and simulate
 rdev = { git = "https://github.com/qzd1989/rdev", features = ["unstable_grab"] }
-
-#global
-lazy_static = "*"
 
 #embed code, internal supports channel message, only_i32 supports register generic fn
 rhai = { version = "*", features = ["internals", "only_i32"] }

@@ -21,8 +21,7 @@ pub struct App {
     data: Arc<RwLock<Option<Data>>>,
     state: Arc<RwLock<State>>,
     grab_handle: Option<JoinHandle<()>>,
-    capture_server: capture::Server, //后台抓取
-    capture_client: capture::Client, //前台显示
+    capture: capture::Capture,
 }
 
 impl App {
@@ -35,8 +34,7 @@ impl App {
             events: Arc::new(RwLock::new(Vec::new())),
             data: Arc::new(RwLock::new(None)),
             grab_handle: None,
-            capture_server: capture::Server::new(cc),
-            capture_client: capture::Client::new(cc),
+            capture: capture::Capture::new(cc),
         };
         let hotkey = Arc::clone(&app.hotkey);
         let mouse_filter = Arc::clone(&app.mouse_filter);
@@ -240,17 +238,17 @@ enum LoopTimes {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        if self.capture_server.is_stop() {
-            self.capture_server.run(ctx.clone(), frame);
+        if self.capture.is_stop() {
+            self.capture.run(ctx.clone(), frame);
         }
 
-        //capture client start
+        //capture app start
         egui::CentralPanel::default().show(ctx, |_ui| {
-            if !self.capture_server.is_stop() {
-                self.capture_client.update(ctx, frame);
+            if !self.capture.is_stop() {
+                self.capture.app().update(ctx, frame);
             }
         });
-        //capture client end
+        //capture app end
     }
 }
 
