@@ -417,19 +417,19 @@ pub enum Button {
 
 #[derive(Debug, Clone)]
 pub struct Data {
-    name: String,
-    resolution: (Int, Int),
-    os: String,
-    os_version: String,
+    _name: String,
+    _resolution: (Int, Int),
+    _os: String,
+    _os_version: String,
     pub content: String,
 }
 impl Data {
-    pub fn new(name: String, content: String) -> Self {
+    pub fn new(_name: String, content: String) -> Self {
         Self {
-            name,
-            resolution: (0, 0),
-            os: String::new(),
-            os_version: String::new(),
+            _name,
+            _resolution: (0, 0),
+            _os: String::new(),
+            _os_version: String::new(),
             content,
         }
     }

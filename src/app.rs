@@ -243,12 +243,14 @@ impl eframe::App for App {
         if self.capture_server.is_stop() {
             self.capture_server.run(ctx.clone(), frame);
         }
-        egui::CentralPanel::default().show(ctx, |ui| {
+
+        //capture client start
+        egui::CentralPanel::default().show(ctx, |_ui| {
             if !self.capture_server.is_stop() {
-                //capture client area
                 self.capture_client.update(ctx, frame);
             }
         });
+        //capture client end
     }
 }
 
