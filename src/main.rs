@@ -2,8 +2,6 @@
 
 use app::App;
 use eframe::egui;
-use instant::Duration;
-use std::thread::sleep;
 mod app;
 mod capture;
 mod common;
@@ -22,7 +20,8 @@ fn main() {
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::<App>::default())
+            Ok(Box::new(App::new(cc)))
         }),
-    );
+    )
+    .unwrap();
 }

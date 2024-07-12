@@ -8,69 +8,36 @@ build = "build.rs"
 [dependencies]
 #global
 image = { version = "*", features = ["jpeg", "png"] }
+pollster = "*"
 
-#gui
+#about gui
 egui = "*"
 egui_extras = { version = "*", features = ["default", "all_loaders"] }
-eframe = { version = "*", features = [
-    "default",
-    "__screenshot", # __screenshot is so we can dump a screenshot using EFRAME_SCREENSHOT_TO
-] }
+egui-wgpu = "*"
+eframe = { version = "*", features = ["default", "__screenshot", "wgpu"] }
+
 #database
 sqlite = "*"
+
 #inputs record and simulate
 rdev = { git = "https://github.com/qzd1989/rdev", features = ["unstable_grab"] }
+
 #global
 lazy_static = "*"
+
 #embed code, internal supports channel message, only_i32 supports register generic fn
 rhai = { version = "*", features = ["internals", "only_i32"] }
+
 #clipboard
 arboard = "*"
+
 #channel support
 crossbeam-channel = "*"
+
 #log
 env_logger = "*"
 log = "*"
-#获取所有窗口信息(包括ID),获取所有显示器信息 to confirm if needed
-xcap = "*"
-#抓取屏幕/窗口视频流 转wgpu数据
+
+#capture display/window streaming to bitmap/texture
 wgpu = { version = "*" }
 crabgrab = { version = "*", features = ["wgpu", "bitmap"] }
-tokio = { version = "*", features = ["full"] }
-async-std = "*"
-app-surface = "*"
-bytemuck = "*"
-anyhow = "*"
-wgpu-types = "*"
-winit = "*"
-#显示出来
-egui-wgpu = "*"
-egui-winit = "0.28.1"
-pollster = "*"
-instant = "*"
-rand = "*"
-
-yuv = "*"
-
-futures = "*"
-
-#screen
-#gstreamer-video = "*"
-#gstreamer = { version = "*", features = ["v1_18"] }
-#anyhow = "*"
-#derive_more = "*"
-#glib = "*"
-
-
-#raw-window-handle = "*"
-
-
-screenshots = "*"
-[target.'cfg(target_os = "windows")'.dependencies]
-
-
-[target.'cfg(target_os = "macos")'.dependencies]
-# cocoa = "*"
-# objc = "*"
-# core-graphics = "*"
-# av-foundation = "*"

@@ -1,8 +1,5 @@
 ///global impls
-use crate::{
-    app::App,
-    common::{Float, Int, UInt},
-};
+use crate::common::{Float, Int, UInt};
 
 pub trait TraitInto<T> {
     fn into_diy(self) -> T;

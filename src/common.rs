@@ -1,7 +1,6 @@
 ///global fns, types, etc.
 #[allow(unused_imports)]
 use crate::i;
-use image::DynamicImage;
 #[allow(unused_imports)]
 use log::{info, warn};
 
@@ -9,7 +8,6 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
 use std::sync::RwLock;
 use std::time::Instant;
-use wgpu::Texture;
 
 pub type Int = i32;
 pub type UInt = u32;
@@ -36,14 +34,14 @@ pub fn simulate_state_send(msg: bool) {
     }
 }
 
-pub fn capture_send(msg: DynamicImage) {
-    if let Err(err) = CAPTURE_CHANNEL.0.send(msg) {
-        warn!("capture_send error: {:?}", err);
-    }
-}
+// pub fn capture_send(msg: Texture) {
+//     if let Err(err) = CAPTURE_CHANNEL.0.send(msg) {
+//         warn!("capture_send error: {:?}", err);
+//     }
+// }
 
 lazy_static! {
     pub static ref NOW: RwLock<Option<Instant>> = RwLock::new(None);
     pub static ref SIMULATE_STATE_CHANNEL: (Sender<bool>, Receiver<bool>) = unbounded();
-    pub static ref CAPTURE_CHANNEL: (Sender<DynamicImage>, Receiver<DynamicImage>) = unbounded();
+    // pub static ref CAPTURE_CHANNEL: (Sender<Texture>, Receiver<Texture>) = unbounded();
 }
