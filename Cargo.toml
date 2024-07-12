@@ -10,6 +10,9 @@ build = "build.rs"
 image = { version = "*", features = ["jpeg", "png"] }
 pollster = "*"
 lazy_static = "*"
+crossbeam-channel = "*"                               #channel
+env_logger = "*"                                      #log
+log = "*"                                             #log
 
 #about gui
 egui = "*"
@@ -28,13 +31,6 @@ rhai = { version = "*", features = ["internals", "only_i32"] }
 
 #clipboard
 arboard = "*"
-
-#channel support
-crossbeam-channel = "*"
-
-#log
-env_logger = "*"
-log = "*"
 
 #capture display/window streaming to bitmap/texture
 wgpu = { version = "*" }
