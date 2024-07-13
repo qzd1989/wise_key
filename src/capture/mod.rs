@@ -1,18 +1,18 @@
+#[allow(unused_imports)]
+use crate::i;
 use crabgrab::prelude::*;
 use eframe::CreationContext;
-use egui::{
-    mutex::{Mutex, MutexGuard, RwLock},
-    ColorImage, ImageData,
-};
+use egui::{mutex::RwLock, ColorImage, ImageData};
 use egui_wgpu::Renderer;
-use image::DynamicImage;
+use image::{ ImageBuffer, Rgba};
+#[allow(unused_imports)]
+use log::{info, warn};
 use pollster::block_on;
 use std::{
-    sync::Arc,
-    thread::{sleep, spawn, JoinHandle},
+    sync::{Arc, Mutex, MutexGuard},
+    thread::{spawn, JoinHandle},
     time::Duration,
 };
-use wgpu::Texture;
 
 #[derive(PartialEq)]
 enum State {
@@ -35,7 +35,7 @@ impl Capture {
         }
     }
     pub fn app(&self) -> MutexGuard<App> {
-        self.app.lock()
+        self.app.lock().unwrap()
     }
     pub fn is_stop(&self) -> bool {
         self.state == State::Stop
@@ -110,12 +110,14 @@ impl Capture {
                                                         let [b, g, r, a] = bgra_data[index];
                                                         *pixel = image::Rgba([r, g, b, a]);
                                                     }
-                                                    // 将 ImageBuffer 转换为 DynamicImage
-                                                    let dynamic_image = image::DynamicImage::ImageRgba8(img_buffer);
-
-                                                    app.lock().image = Some(dynamic_image);
-                                                    ctx.request_repaint();
-                                                    sleep(Duration::from_millis(50));
+                                                    let image_data = image_buffer_to_image_data(img_buffer);
+                                                    let mut lock = app.try_lock();
+                                                    if let Ok(ref mut mutex) = lock {
+                                                        mutex.update_texture_handle(ctx.clone(), &image_data);
+                                                    } else {
+                                                        println!("try_lock failed");
+                                                    }                                                                   
+                                                    // std::thread::sleep(Duration::from_millis(1000));
                                             },
                                             crabgrab::feature::bitmap::FrameBitmap::ArgbUnormPacked2101010(_) => println!("format: ArgbUnormPacked2101010"),
                                             crabgrab::feature::bitmap::FrameBitmap::RgbaF16x4(_) => println!("format: RgbaF16x4"),
@@ -124,27 +126,6 @@ impl Capture {
                                     },
                                     Err(e) => {
                                         println!("Bitmap error: {:?}", e);
-                                    }
-                                }
-                                match frame.get_wgpu_texture(WgpuVideoFramePlaneTexture::Rgba, None)
-                                {
-                                    Ok(texture) => {
-                                        let ref mut renderer = *renderer.write();
-                                        let texture_id = renderer.register_native_texture(
-                                            &device,
-                                            &texture.create_view(
-                                                &wgpu::TextureViewDescriptor::default(),
-                                            ),
-                                            wgpu::FilterMode::Linear,
-                                        );
-                                        let texture_handle =
-                                            egui::TextureHandle::new(ctx.tex_manager(), texture_id);
-                                        app.lock().texture_id = Some(texture_id);
-                                        app.lock().texture_handle = Some(texture_handle);
-                                        sleep(Duration::from_millis(70));
-                                    }
-                                    Err(err) => {
-                                        println!("get_wgpu_texture: Rgba, err is {err}")
                                     }
                                 }
                             }
@@ -179,19 +160,24 @@ impl AsRef<wgpu::Device> for Gfx {
 }
 
 pub struct App {
-    pub image: Option<image::DynamicImage>,
-    pub texture: Option<Texture>,
-    pub texture_id: Option<egui::TextureId>,
     pub texture_handle: Option<egui::TextureHandle>,
 }
 impl App {
     pub fn new(_cc: &CreationContext) -> Self {
         Self {
-            texture: None,
-            image: None,
-            texture_id: None,
             texture_handle: None,
         }
+    }
+    pub fn update_texture_handle(&mut self, ctx: egui::Context, data: &ImageData) {
+        if let Some(_) = &self.texture_handle {
+            self.texture_handle
+                .as_mut()
+                .unwrap()
+                .set(data.clone(), Default::default());
+        } else {
+            self.texture_handle = Some(ctx.load_texture("haha", data.clone(), Default::default()));
+        }
+        ctx.request_repaint();
     }
 }
 
@@ -200,43 +186,21 @@ impl eframe::App for App {
         let _ = frame;
         egui::CentralPanel::default().show(ctx, |ui| {
             let _ = ui.button("hello");
-            // ui.label(format!("{:?}", self.texture));
-
-            if false {
-                if let Some(image) = &self.image {
-                    let image = dynamic_image_to_egui_image_data(&image);
-                    let texture = ui.ctx().load_texture("frame", image, Default::default());
-                    ui.image(&texture);
-                }
-            } else {
-                if let Some(texture_handle) = &self.texture_handle {
-                    ui.image(texture_handle);
-                }
+            if let Some(handle) = &self.texture_handle {
+                ui.image(handle);
             }
         });
     }
 }
 
-fn dynamic_image_to_egui_image_data(dynamic_image: &DynamicImage) -> ImageData {
-    let rgba_image = dynamic_image.to_rgba8();
-    let (width, height) = rgba_image.dimensions();
-    let pixels = rgba_image.into_raw();
-
-    let color_image =
-        ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels);
+fn image_buffer_to_image_data(image_buffer: ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageData {
+    // 获取图像的宽度和高度
+    let width = image_buffer.width() as usize;
+    let height = image_buffer.height() as usize;
+    // 提取像素数据
+    let pixels: Vec<u8> = image_buffer.into_raw();
+    // 创建 ColorImage
+    let color_image = ColorImage::from_rgba_unmultiplied([width, height], &pixels);
+    // 包装在 ImageData 中
     ImageData::Color(Arc::new(color_image))
-}
-
-fn wgpu_texture_to_egui_texture_handle(
-    device: &wgpu::Device,
-    renderer: &mut Renderer,
-    ctx: &egui::Context,
-    texture: &wgpu::Texture,
-) -> egui::TextureHandle {
-    let texture_id = renderer.register_native_texture(
-        device,
-        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-        wgpu::FilterMode::Linear,
-    );
-    egui::TextureHandle::new(ctx.tex_manager(), texture_id)
 }
