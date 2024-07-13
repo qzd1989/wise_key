@@ -1,9 +1,10 @@
 use crabgrab::prelude::*;
 use eframe::CreationContext;
 use egui::{
-    mutex::{Mutex, MutexGuard},
+    mutex::{Mutex, MutexGuard, RwLock},
     ColorImage, ImageData,
 };
+use egui_wgpu::Renderer;
 use image::DynamicImage;
 use pollster::block_on;
 use std::{
@@ -45,18 +46,20 @@ impl Capture {
         let device = &egui_render_state.device;
         let _adapter = &egui_render_state.adapter;
         let queue = &egui_render_state.queue;
-        let _renderer = &egui_render_state.renderer;
+        let renderer = &egui_render_state.renderer;
         let _target_format = egui_render_state.target_format;
         let device_clone = Arc::clone(&device);
+        let renderer_clone = Arc::clone(&renderer);
         let queue_clone = Arc::clone(&queue);
         let app_clone = Arc::clone(&self.app);
         self.listen_handle = Some(spawn(move || {
-            Self::_listen(device_clone, queue_clone, app_clone, ctx)
+            Self::_listen(device_clone, queue_clone, renderer_clone, app_clone, ctx)
         }));
     }
     fn _listen(
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
+        renderer: Arc<RwLock<Renderer>>,
         app: Arc<Mutex<App>>,
         ctx: egui::Context,
     ) {
@@ -77,7 +80,11 @@ impl Capture {
                 window.title().len() != 0 && app_identifier.to_lowercase().contains("chrome")
             })
             .next();
-        let gfx = Arc::new(Gfx { device, queue });
+        let device_clone = Arc::clone(&device);
+        let gfx = Arc::new(Gfx {
+            device: device_clone,
+            queue,
+        });
         match window {
             Some(window) => {
                 println!("capturing window: {}", window.title());
@@ -93,7 +100,6 @@ impl Capture {
                                     Ok(bitmap) => {
                                         match bitmap {
                                             crabgrab::feature::bitmap::FrameBitmap::BgraUnorm8x4(data) => {
-                                                //here you are
                                                 let (width, height) = (data.width as u32, data.height as u32);
                                                     let bgra_data = data.data;
                                                     // 创建一个 ImageBuffer
@@ -104,7 +110,7 @@ impl Capture {
                                                         let [b, g, r, a] = bgra_data[index];
                                                         *pixel = image::Rgba([r, g, b, a]);
                                                     }
-                                                    // 将 ImageBuffer 转换为 DynamicImagei
+                                                    // 将 ImageBuffer 转换为 DynamicImage
                                                     let dynamic_image = image::DynamicImage::ImageRgba8(img_buffer);
 
                                                     app.lock().image = Some(dynamic_image);
@@ -123,9 +129,18 @@ impl Capture {
                                 match frame.get_wgpu_texture(WgpuVideoFramePlaneTexture::Rgba, None)
                                 {
                                     Ok(texture) => {
-                                        app.lock().texture = Some(texture);
-                                        println!("texture is : {:?}", app.lock().texture);
-                                        ctx.request_repaint();
+                                        let ref mut renderer = *renderer.write();
+                                        let texture_id = renderer.register_native_texture(
+                                            &device,
+                                            &texture.create_view(
+                                                &wgpu::TextureViewDescriptor::default(),
+                                            ),
+                                            wgpu::FilterMode::Linear,
+                                        );
+                                        let texture_handle =
+                                            egui::TextureHandle::new(ctx.tex_manager(), texture_id);
+                                        app.lock().texture_id = Some(texture_id);
+                                        app.lock().texture_handle = Some(texture_handle);
                                         sleep(Duration::from_millis(70));
                                     }
                                     Err(err) => {
@@ -166,12 +181,16 @@ impl AsRef<wgpu::Device> for Gfx {
 pub struct App {
     pub image: Option<image::DynamicImage>,
     pub texture: Option<Texture>,
+    pub texture_id: Option<egui::TextureId>,
+    pub texture_handle: Option<egui::TextureHandle>,
 }
 impl App {
     pub fn new(_cc: &CreationContext) -> Self {
         Self {
             texture: None,
             image: None,
+            texture_id: None,
+            texture_handle: None,
         }
     }
 }
@@ -182,10 +201,17 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             let _ = ui.button("hello");
             // ui.label(format!("{:?}", self.texture));
-            if let Some(image) = &self.image {
-                let image = dynamic_image_to_egui_image_data(&image);
-                let texture = ui.ctx().load_texture("frame", image, Default::default());
-                ui.image(&texture);
+
+            if false {
+                if let Some(image) = &self.image {
+                    let image = dynamic_image_to_egui_image_data(&image);
+                    let texture = ui.ctx().load_texture("frame", image, Default::default());
+                    ui.image(&texture);
+                }
+            } else {
+                if let Some(texture_handle) = &self.texture_handle {
+                    ui.image(texture_handle);
+                }
             }
         });
     }
@@ -199,4 +225,18 @@ fn dynamic_image_to_egui_image_data(dynamic_image: &DynamicImage) -> ImageData {
     let color_image =
         ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels);
     ImageData::Color(Arc::new(color_image))
+}
+
+fn wgpu_texture_to_egui_texture_handle(
+    device: &wgpu::Device,
+    renderer: &mut Renderer,
+    ctx: &egui::Context,
+    texture: &wgpu::Texture,
+) -> egui::TextureHandle {
+    let texture_id = renderer.register_native_texture(
+        device,
+        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+        wgpu::FilterMode::Linear,
+    );
+    egui::TextureHandle::new(ctx.tex_manager(), texture_id)
 }
