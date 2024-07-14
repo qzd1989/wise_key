@@ -239,7 +239,7 @@ enum LoopTimes {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if self.capture.is_stop() {
-            self.capture.run(ctx.clone(), frame);
+            self.capture.run(ctx.clone());
         }
 
         //capture app start

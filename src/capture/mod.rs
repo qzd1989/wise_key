@@ -2,8 +2,7 @@
 use crate::i;
 use crabgrab::prelude::*;
 use eframe::CreationContext;
-use egui::{mutex::RwLock, ColorImage, ImageData};
-use egui_wgpu::Renderer;
+use egui::{ColorImage, ImageData};
 use image::{ ImageBuffer, Rgba};
 #[allow(unused_imports)]
 use log::{info, warn};
@@ -40,26 +39,14 @@ impl Capture {
     pub fn is_stop(&self) -> bool {
         self.state == State::Stop
     }
-    pub fn run(&mut self, ctx: egui::Context, frame: &mut eframe::Frame) {
+    pub fn run(&mut self, ctx: egui::Context) {
         self.state = State::Run;
-        let egui_render_state = frame.wgpu_render_state().unwrap();
-        let device = &egui_render_state.device;
-        let _adapter = &egui_render_state.adapter;
-        let queue = &egui_render_state.queue;
-        let renderer = &egui_render_state.renderer;
-        let _target_format = egui_render_state.target_format;
-        let device_clone = Arc::clone(&device);
-        let renderer_clone = Arc::clone(&renderer);
-        let queue_clone = Arc::clone(&queue);
         let app_clone = Arc::clone(&self.app);
         self.listen_handle = Some(spawn(move || {
-            Self::_listen(device_clone, queue_clone, renderer_clone, app_clone, ctx)
+            Self::_listen(app_clone, ctx)
         }));
     }
     fn _listen(
-        device: Arc<wgpu::Device>,
-        queue: Arc<wgpu::Queue>,
-        renderer: Arc<RwLock<Renderer>>,
         app: Arc<Mutex<App>>,
         ctx: egui::Context,
     ) {
@@ -80,18 +67,10 @@ impl Capture {
                 window.title().len() != 0 && app_identifier.to_lowercase().contains("chrome")
             })
             .next();
-        let device_clone = Arc::clone(&device);
-        let gfx = Arc::new(Gfx {
-            device: device_clone,
-            queue,
-        });
         match window {
             Some(window) => {
                 println!("capturing window: {}", window.title());
-                let config = CaptureConfig::with_window(window, CapturePixelFormat::Bgra8888)
-                    .unwrap()
-                    .with_wgpu_device(gfx.clone())
-                    .unwrap();
+                let config = CaptureConfig::with_window(window, CapturePixelFormat::Bgra8888).unwrap();
                 let mut stream =
                     CaptureStream::new(token, config, move |stream_event| match stream_event {
                         Ok(event) => match event {
