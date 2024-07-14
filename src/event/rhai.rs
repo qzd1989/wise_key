@@ -314,8 +314,6 @@ pub fn select_all() {
 
 #[cfg(target_os = "windows")]
 pub fn select_all() {
-    let mut clipboard = Clipboard::new().unwrap();
-    clipboard.set_text(text).unwrap();
     key_press(Key::ControlLeft);
     delay(10);
     key_press(Key::KeyA);
