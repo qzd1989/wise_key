@@ -180,6 +180,5 @@ fn image_buffer_to_image_data(image_buffer: ImageBuffer<Rgba<u8>, Vec<u8>>) -> I
     let pixels: Vec<u8> = image_buffer.into_raw();
     // 创建 ColorImage
     let color_image = ColorImage::from_rgba_unmultiplied([width, height], &pixels);
-    // 包装在 ImageData 中
     ImageData::Color(Arc::new(color_image))
 }
